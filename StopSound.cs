@@ -1,7 +1,9 @@
-﻿using CounterStrikeSharp.API;
+﻿using System.Runtime.InteropServices;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
 using static CounterStrikeSharp.API.Core.Listeners;
@@ -19,10 +21,10 @@ namespace StopSound
         {
             M_NORMAL = 0,
             M_STOP = 1,
+            M_SILENCER = 2
         }
 
         public Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
-        public RecipientFilter NormalFilter = new RecipientFilter();
 
         public override void Load(bool hotReload)
         {
@@ -30,8 +32,6 @@ namespace StopSound
 
             RegisterListener<OnClientPutInServer>(OnClientPutInServerHook);
             RegisterListener<OnClientDisconnect>(OnClientDisconnectHook);
-
-            NormalFilter = new RecipientFilter();
         }
 
         private void OnClientPutInServerHook(int playerSlot)
@@ -43,7 +43,6 @@ namespace StopSound
 
             ClientSoundList.Add(client, SoundMode.M_NORMAL);
             SetStopSoundStatus(client, SoundMode.M_NORMAL);
-            NormalFilter.Add(client);
 
             return;
         }
@@ -56,18 +55,17 @@ namespace StopSound
                 return;
 
             ClientSoundList.Remove(client);
-            NormalFilter.Remove(client);
         }
 
         [ConsoleCommand("css_stopsound")]
-        [CommandHelper(1, "css_stopsound <0-1>", CommandUsage.CLIENT_ONLY)]
+        [CommandHelper(1, "css_stopsound <0-2>", CommandUsage.CLIENT_ONLY)]
         public void StopSoundCommand(CCSPlayerController client, CommandInfo info)
         {
             var arg = info.GetArg(1);
 
-            if (int.Parse(arg) < 0 || int.Parse(arg) > 2)
+            if (int.Parse(arg) < 0 || int.Parse(arg) > 3)
             {
-                info.ReplyToCommand($"{ChatColors.Green}[Stopsound]{ChatColors.White} You can't set number more than 2 or less than 0!");
+                info.ReplyToCommand($"{ChatColors.Green}[Stopsound]{ChatColors.White} You can't set number more than 3 or less than 0!");
                 return;
             }
 
@@ -77,7 +75,24 @@ namespace StopSound
 
         public HookResult Hook_WeaponFiring(UserMessage userMessage)
         {
-            userMessage.Recipients = NormalFilter;
+            var weaponid = userMessage.ReadUInt("weapon_id");
+            var soundType = userMessage.ReadInt("sound_type");
+            var itemdefindex = userMessage.ReadUInt("item_def_index");
+
+            userMessage.SetUInt("weapon_id", 0);
+            userMessage.SetInt("sound_type", 9);
+            userMessage.SetUInt("item_def_index", 61);
+
+            // send for people who use silencer.
+            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_SILENCER);
+            userMessage.Send();
+
+            userMessage.SetUInt("weapon_id", weaponid);
+            userMessage.SetInt("sound_type", soundType);
+            userMessage.SetUInt("item_def_index", itemdefindex);
+
+            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
+
             return HookResult.Continue;
         }
 
@@ -90,13 +105,22 @@ namespace StopSound
 
             ClientSoundList[client] = mode;
 
-            if(mode == SoundMode.M_NORMAL)
-                NormalFilter.Add(client);
-
-            else 
-                NormalFilter.Remove(client);
-
             client.PrintToChat($" {ChatColors.Green}[Stopsound]{ChatColors.White} You set to {ChatColors.Olive}{GetModeString(mode)}{ChatColors.White}.");
+        }
+
+        RecipientFilter GetRecipientFromMode(SoundMode mode)
+        {
+            var recipientfilter = new RecipientFilter();
+
+            foreach(var client in ClientSoundList)
+            {
+                if(client.Value == mode)
+                {
+                    recipientfilter.Add(client.Key);
+                }
+            }
+
+            return recipientfilter;
         }
 
         string GetModeString(SoundMode mode)
@@ -108,6 +132,9 @@ namespace StopSound
 
                 case SoundMode.M_STOP:
                     return "No weapon sound";
+
+                case SoundMode.M_SILENCER:
+                    return "Silencer sound";
 
                 default:
                     return "Invalid";
