@@ -1,11 +1,11 @@
-﻿using System.Runtime.InteropServices;
-using CounterStrikeSharp.API;
+﻿using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
-using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
+using Dapper;
+using Microsoft.Data.Sqlite;
 using static CounterStrikeSharp.API.Core.Listeners;
 
 namespace StopSound
@@ -17,7 +17,7 @@ namespace StopSound
         public override string ModuleDescription => "Prevent client to hear a noise sound from firing weapon";
         public override string ModuleVersion => "Alpha 1.0";
 
-        public enum SoundMode : int
+        public enum SoundMode : long
         {
             M_NORMAL = 0,
             M_STOP = 1,
@@ -26,12 +26,25 @@ namespace StopSound
 
         public Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
 
+        public SqliteConnection? Connection = null;
+
         public override void Load(bool hotReload)
         {
             HookUserMessage(452, Hook_WeaponFiring, HookMode.Pre);
 
+            RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
             RegisterListener<OnClientPutInServer>(OnClientPutInServerHook);
             RegisterListener<OnClientDisconnect>(OnClientDisconnectHook);
+
+            LoadDatabase();
+        }
+
+        private async void LoadDatabase()
+        {
+            Connection = new SqliteConnection($"Data Source={Path.Join(ModuleDirectory, "stopsound.db")}");
+            Connection.Open();
+
+            await Connection.ExecuteAsync(@"CREATE TABLE IF NOT EXISTS stopsound (player_auth VARCHAR(64) PRIMARY KEY, sound_mode INT);");
         }
 
         private void OnClientPutInServerHook(int playerSlot)
@@ -57,6 +70,57 @@ namespace StopSound
             ClientSoundList.Remove(client);
         }
 
+        public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
+        {
+            var client = @event.Userid;
+
+            if (client == null || client.IsBot || client.IsHLTV)
+                return HookResult.Continue;
+
+            if (client.AuthorizedSteamID == null)
+                return HookResult.Continue;
+
+            GetPlayerSoundMode(client);
+
+            return HookResult.Continue;
+        }
+
+        private async void GetPlayerSoundMode(CCSPlayerController client)
+        {
+            if (client == null) return;
+
+            var query = "SELECT sound_mode FROM stopsound WHERE player_auth = @Auth;";
+
+            var param = new
+            {
+                Auth = client.AuthorizedSteamID!.SteamId3
+            };
+
+            var result = await Connection!.ExecuteReaderAsync(query, param);
+
+            if (result == null) return;
+
+            if (result.HasRows)
+            {
+                result.Read();
+                ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
+            }
+            else
+                InsertPlayerData(client);
+        }
+
+        private async void InsertPlayerData(CCSPlayerController client, SoundMode mode = SoundMode.M_NORMAL)
+        {
+            var query = "INSERT INTO stopsound (player_auth, sound_mode) VALUES(@Auth, @Mode) ON CONFLICT(player_auth) DO UPDATE SET sound_mode = @Mode;";
+            var param = new
+            {
+                Auth = client.AuthorizedSteamID!.SteamId3,
+                Mode = (long)mode
+            };
+
+            await Connection!.ExecuteAsync(query, param);
+        }
+
         [ConsoleCommand("css_stopsound")]
         [CommandHelper(1, "css_stopsound <0-2>", CommandUsage.CLIENT_ONLY)]
         public void StopSoundCommand(CCSPlayerController client, CommandInfo info)
@@ -69,8 +133,8 @@ namespace StopSound
                 return;
             }
 
-            var mode = (SoundMode)int.Parse(arg);
-            SetStopSoundStatus(client, mode);
+            var mode = (SoundMode)long.Parse(arg);
+            SetStopSoundStatus(client, mode, true);
         }
 
         public HookResult Hook_WeaponFiring(UserMessage userMessage)
@@ -96,7 +160,7 @@ namespace StopSound
             return HookResult.Continue;
         }
 
-        void SetStopSoundStatus(CCSPlayerController client, SoundMode mode)
+        void SetStopSoundStatus(CCSPlayerController client, SoundMode mode, bool database = false)
         {
             if(client == null) return;
 
@@ -104,6 +168,9 @@ namespace StopSound
                 ClientSoundList.Add(client, mode);
 
             ClientSoundList[client] = mode;
+
+            if(database)
+                InsertPlayerData(client, mode);
 
             client.PrintToChat($" {ChatColors.Green}[Stopsound]{ChatColors.White} You set to {ChatColors.Olive}{GetModeString(mode)}{ChatColors.White}.");
         }
