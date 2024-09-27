@@ -29,6 +29,7 @@ jobs:
     - name: Get Version
       run: |
         version=$(grep 'public override string ModuleVersion =>' /home/runner/work/StopSound/StopSound/StopSound.cs | sed 's/.*=> "\(.*\)";/\1/')
+        version=${version// /_}
         short_sha=$(echo $GITHUB_SHA | cut -c1-7)
         tag=$(echo $version | tr '[:upper:]' '[:lower:]')
         echo "VERSION=$version" >> $GITHUB_ENV
@@ -71,7 +72,7 @@ jobs:
     - name: Zip File
       run: |
         cd release
-        zip -r StopSound_${{ env.TAG }}.zip addons
+        zip -r "StopSound_${{ env.TAG }}.zip" addons
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
