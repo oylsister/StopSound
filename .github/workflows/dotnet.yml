@@ -26,8 +26,10 @@ jobs:
       run: dotnet build --no-restore
     - name: Get Version
       run: |
-        version=$(grep 'public override string ModuleVersion =>' /home/runner/work/StopSound/StopSound/Program.cs | sed 's/.*=> "\(.*\)";/\1/')
-        version=${version// /_}
+        version=$(grep 'public override string ModuleVersion =>' /home/runner/work/StopSound/StopSound/StopSound.cs | sed 's/.*=> "\(.*\)";/\1/')
+        short_sha=$(echo $GITHUB_SHA | cut -c1-7)
+        echo "VERSION=$version" >> $GITHUB_ENV
+        echo "SHORT_SHA=$short_sha" >> $GITHUB_ENV
     - name: Prepare Directory
       run: | 
         # make main folder
@@ -52,14 +54,10 @@ jobs:
         # copy sqlite dependencies files.
         cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/runtimes/linux-x64/native/libe_sqlite3.so release/addons/counterstrikesharp/dotnet/shared/Microsoft.NETCore.App/8.0.3/
         cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/runtimes/win-x64/native/e_sqlite3.dll release/addons/counterstrikesharp/dotnet/shared/Microsoft.NETCore.App/8.0.3/
-    - name: Zip File
-      run: |
-        cd release
-        zip -r StopSound-${{ github.sha }}.zip addons
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: StopSound-${{ github.sha }}
-        path: release/StopSound-${{ github.sha }}.zip 
+        name: StopSound-${{ env.SHORT_SHA }}
+        path: release/addons
 
 
   
