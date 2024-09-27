@@ -31,12 +31,17 @@ jobs:
     - name: Get Version
       run: |
         version=$(grep 'public override string ModuleVersion =>' /home/runner/work/StopSound/StopSound/StopSound.cs | sed 's/.*=> "\(.*\)";/\1/')
-        version=${version// /_}
+        version_under=${version// /_}
+        version_minus=${version// /-}
         short_sha=$(echo $GITHUB_SHA | cut -c1-7)
-        tag=$(echo $version | tr '[:upper:]' '[:lower:]')
+        tag=$(echo $version_minus | tr '[:upper:]' '[:lower:]')
+        file_ver=$(echo $version_under | tr '[:upper:]' '[:lower:]')
         echo "VERSION=$version" >> $GITHUB_ENV
+        echo "VERSION_UNDER=$version_under" >> $GITHUB_ENV
+        echo "VERSION_MINUS=$version_minus" >> $GITHUB_ENV
         echo "SHORT_SHA=$short_sha" >> $GITHUB_ENV
         echo "TAG=$tag" >> $GITHUB_ENV
+        echo "FILE_VER=$file_ver" >> $GITHUB_ENV
     
     # gather all file in for release
     - name: Prepare Directory
@@ -67,20 +72,20 @@ jobs:
     # artifact for user to getting a file.
     - uses: actions/upload-artifact@v4
       with:
-        name: StopSound-${{ env.SHORT_SHA }}
+        name: stopsound-${{ env.SHORT_SHA }}
         path: release/
 
     # zip file
     - name: Zip File
       run: |
         cd release
-        zip -r "StopSound_${{ env.TAG }}.zip" addons
+        zip -r "stopsound_${{ env.FILE_VER }}.zip" addons
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.TAG }}
         name: ${{ env.VERSION }}
-        files: release/StopSound_${{ env.TAG }}.zip
+        files: release/stopsound_${{ env.FILE_VER }}.zip
 
   
