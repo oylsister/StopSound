@@ -34,7 +34,7 @@ jobs:
         mkdir -p release/addons/counterstrikesharp/plugins/StopSound
 
         # Copy all plugins files
-        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.deps release/addons/counterstrikesharp/plugins/StopSound/
+        # cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.deps release/addons/counterstrikesharp/plugins/StopSound/
         cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.dll release/addons/counterstrikesharp/plugins/StopSound/
         cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.pdb release/addons/counterstrikesharp/plugins/StopSound/
 
