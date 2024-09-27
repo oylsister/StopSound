@@ -11,6 +11,8 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: write
 
     runs-on: ubuntu-latest
 
@@ -79,6 +81,6 @@ jobs:
       with:
         tag_name: ${{ env.TAG }}
         name: ${{ env.VERSION }}
-        files: StopSound_${{ env.TAG }}.zip
+        files: release/StopSound_${{ env.TAG }}.zip
 
   
