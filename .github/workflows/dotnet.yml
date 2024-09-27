@@ -24,5 +24,42 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
+    - name: Get Version
+      run: |
+        version=$(grep 'public override string ModuleVersion =>' /home/runner/work/StopSound/StopSound/Program.cs | sed 's/.*=> "\(.*\)";/\1/')
+        version=${version// /_}
+    - name: Prepare Directory
+      run: | 
+        # make main folder
+        mkdir -p release/addons/counterstrikesharp/plugins/StopSound
+
+        # Copy all plugins files
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.deps release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.dll release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.pdb release/addons/counterstrikesharp/plugins/StopSound/
+
+        # Copy all SQLite files
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/SQLitePCLRaw.provider.e_sqlite3.dll release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/SQLitePCLRaw.batteries_v2.dll release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/SQLitePCLRaw.core.dll release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/Dapper.dll release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/Microsoft.Data.Sqlite.dll release/addons/counterstrikesharp/plugins/StopSound/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/StopSound.dll release/addons/counterstrikesharp/plugins/StopSound/
+
+        # make SQLite dependencies folder.
+        mkdir -p release/addons/counterstrikesharp/dotnet/shared/Microsoft.NETCore.App/8.0.3
+
+        # copy sqlite dependencies files.
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/runtimes/linux-x64/native/libe_sqlite3.so release/addons/counterstrikesharp/dotnet/shared/Microsoft.NETCore.App/8.0.3/
+        cp /home/runner/work/StopSound/StopSound/bin/Debug/net8.0/runtimes/win-x64/native/e_sqlite3.dll release/addons/counterstrikesharp/dotnet/shared/Microsoft.NETCore.App/8.0.3/
+    - name: Zip File
+      run: |
+        cd release
+        zip -r StopSound-${{ github.sha }}.zip addons
+    - uses: actions/upload-artifact@v3
+      with:
+        name: StopSound-${{ github.sha }}
+        path: release/StopSound-${{ github.sha }}.zip 
+
+
+  
