@@ -15,7 +15,7 @@ namespace StopSound
         public override string ModuleName => "Stop Weapon Sound";
         public override string ModuleAuthor => "Oylsister";
         public override string ModuleDescription => "Prevent client to hear a noise sound from firing weapon";
-        public override string ModuleVersion => "1.0";
+        public override string ModuleVersion => "1.1";
 
         public enum SoundMode : long
         {
@@ -31,6 +31,7 @@ namespace StopSound
         public override void Load(bool hotReload)
         {
             HookUserMessage(452, Hook_WeaponFiring, HookMode.Pre);
+            HookUserMessage(417, Hook_WeaponMuzzle, HookMode.Pre);
 
             RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
             RegisterListener<OnClientPutInServer>(OnClientPutInServerHook);
@@ -156,6 +157,12 @@ namespace StopSound
 
             userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
 
+            return HookResult.Continue;
+        }
+
+        public HookResult Hook_WeaponMuzzle(UserMessage userMessage)
+        {
+            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
             return HookResult.Continue;
         }
 
