@@ -31,7 +31,6 @@ namespace StopSound
         public override void Load(bool hotReload)
         {
             HookUserMessage(452, Hook_WeaponFiring, HookMode.Pre);
-            HookUserMessage(417, Hook_WeaponMuzzle, HookMode.Pre);
 
             RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
             RegisterListener<OnClientPutInServer>(OnClientPutInServerHook);
@@ -80,12 +79,12 @@ namespace StopSound
             if (client.AuthorizedSteamID == null)
                 return HookResult.Continue;
 
-            GetPlayerSoundMode(client);
+            Task.Run(async () => await GetPlayerSoundMode(client));
 
             return HookResult.Continue;
         }
 
-        private async void GetPlayerSoundMode(CCSPlayerController client)
+        private async Task GetPlayerSoundMode(CCSPlayerController client)
         {
             if (client == null) return;
 
@@ -106,10 +105,10 @@ namespace StopSound
                 ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
             }
             else
-                InsertPlayerData(client);
+                await InsertPlayerData(client);
         }
 
-        private async void InsertPlayerData(CCSPlayerController client, SoundMode mode = SoundMode.M_NORMAL)
+        private async Task InsertPlayerData(CCSPlayerController client, SoundMode mode = SoundMode.M_NORMAL)
         {
             var query = "INSERT INTO stopsound (player_auth, sound_mode) VALUES(@Auth, @Mode) ON CONFLICT(player_auth) DO UPDATE SET sound_mode = @Mode;";
             var param = new
@@ -160,12 +159,6 @@ namespace StopSound
             return HookResult.Continue;
         }
 
-        public HookResult Hook_WeaponMuzzle(UserMessage userMessage)
-        {
-            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
-            return HookResult.Continue;
-        }
-
         void SetStopSoundStatus(CCSPlayerController client, SoundMode mode, bool database = false)
         {
             if(client == null) return;
@@ -175,8 +168,10 @@ namespace StopSound
 
             ClientSoundList[client] = mode;
 
-            if(database)
-                InsertPlayerData(client, mode);
+            if (database)
+            {
+                Task.Run(async () => await InsertPlayerData(client, mode));
+            }
 
             client.PrintToChat($" {ChatColors.Green}[Stopsound]{ChatColors.White} You set to {ChatColors.Olive}{GetModeString(mode)}{ChatColors.White}.");
         }
