@@ -15,7 +15,7 @@ namespace StopSound
         public override string ModuleName => "Stop Weapon Sound";
         public override string ModuleAuthor => "Oylsister";
         public override string ModuleDescription => "Prevent client to hear a noise sound from firing weapon";
-        public override string ModuleVersion => "1.1";
+        public override string ModuleVersion => "1.2";
 
         public enum SoundMode : long
         {
