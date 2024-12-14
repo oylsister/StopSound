@@ -15,7 +15,7 @@ namespace StopSound
         public override string ModuleName => "Stop Weapon Sound";
         public override string ModuleAuthor => "Oylsister";
         public override string ModuleDescription => "Prevent client to hear a noise sound from firing weapon";
-        public override string ModuleVersion => "1.1";
+        public override string ModuleVersion => "1.2";
 
         public enum SoundMode : long
         {
@@ -55,8 +55,6 @@ namespace StopSound
                 return;
 
             ClientSoundList.Add(client, SoundMode.M_NORMAL);
-
-            return;
         }
 
         private void OnClientDisconnectHook(int playerSlot)
@@ -79,12 +77,13 @@ namespace StopSound
             if (client.AuthorizedSteamID == null)
                 return HookResult.Continue;
 
-            Task.Run(async () => await GetPlayerSoundMode(client));
+            var steamid = client.AuthorizedSteamID!.SteamId3;
+            Task.Run(async () => await GetPlayerSoundMode(client, steamid));
 
             return HookResult.Continue;
         }
 
-        private async Task GetPlayerSoundMode(CCSPlayerController client)
+        private async Task GetPlayerSoundMode(CCSPlayerController client, string steamid)
         {
             if (client == null) return;
 
@@ -92,7 +91,7 @@ namespace StopSound
 
             var param = new
             {
-                Auth = client.AuthorizedSteamID!.SteamId3
+                Auth = steamid
             };
 
             var result = await Connection!.ExecuteReaderAsync(query, param);
@@ -105,15 +104,15 @@ namespace StopSound
                 ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
             }
             else
-                await InsertPlayerData(client);
+                await InsertPlayerData(client, steamid);
         }
 
-        private async Task InsertPlayerData(CCSPlayerController client, SoundMode mode = SoundMode.M_NORMAL)
+        private async Task InsertPlayerData(CCSPlayerController client, string steamid, SoundMode mode = SoundMode.M_NORMAL)
         {
             var query = "INSERT INTO stopsound (player_auth, sound_mode) VALUES(@Auth, @Mode) ON CONFLICT(player_auth) DO UPDATE SET sound_mode = @Mode;";
             var param = new
             {
-                Auth = client.AuthorizedSteamID!.SteamId3,
+                Auth = steamid,
                 Mode = (long)mode
             };
 
@@ -170,7 +169,8 @@ namespace StopSound
 
             if (database)
             {
-                Task.Run(async () => await InsertPlayerData(client, mode));
+                var steamid = client.AuthorizedSteamID!.SteamId3;
+                Task.Run(async () => await InsertPlayerData(client, steamid, mode));
             }
 
             client.PrintToChat($" {ChatColors.Green}[Stopsound]{ChatColors.White} You set to {ChatColors.Olive}{GetModeString(mode)}{ChatColors.White}.");
