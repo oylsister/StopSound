@@ -2,6 +2,7 @@
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
 using Dapper;
@@ -15,7 +16,7 @@ namespace StopSound
         public override string ModuleName => "Stop Weapon Sound";
         public override string ModuleAuthor => "Oylsister";
         public override string ModuleDescription => "Prevent client to hear a noise sound from firing weapon";
-        public override string ModuleVersion => "1.2";
+        public override string ModuleVersion => "1.3";
 
         public enum SoundMode : long
         {
@@ -25,21 +26,19 @@ namespace StopSound
         }
 
         public Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
-
         public SqliteConnection? Connection = null;
 
         public override void Load(bool hotReload)
         {
             HookUserMessage(452, Hook_WeaponFiring, HookMode.Pre);
 
-            RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
-            RegisterListener<OnClientPutInServer>(OnClientPutInServerHook);
-            RegisterListener<OnClientDisconnect>(OnClientDisconnectHook);
+            RegisterListener<OnClientPutInServer>(OnClientPutInServer);
+            RegisterListener<OnClientDisconnect>(OnClientDisconnect);
 
-            LoadDatabase();
+            LoadDatabase().Wait();
         }
 
-        private async void LoadDatabase()
+        private async Task LoadDatabase()
         {
             Connection = new SqliteConnection($"Data Source={Path.Join(ModuleDirectory, "stopsound.db")}");
             Connection.Open();
@@ -47,40 +46,39 @@ namespace StopSound
             await Connection.ExecuteAsync(@"CREATE TABLE IF NOT EXISTS stopsound (player_auth VARCHAR(64) PRIMARY KEY, sound_mode INT);");
         }
 
-        private void OnClientPutInServerHook(int playerSlot)
+        private void OnClientPutInServer(int playerSlot)
         {
             var client = Utilities.GetPlayerFromSlot(playerSlot);
 
             if (client == null)
+                return;
+
+            if (client.IsBot)
                 return;
 
             ClientSoundList.Add(client, SoundMode.M_NORMAL);
+
+            var steamid = client.AuthorizedSteamID?.SteamId3;
+
+            if(steamid == null)
+            {
+                return;
+            }
+
+            Task.Run(async () => await GetPlayerSoundMode(client, steamid));
         }
 
-        private void OnClientDisconnectHook(int playerSlot)
+        private void OnClientDisconnect(int playerSlot)
         {
             var client = Utilities.GetPlayerFromSlot(playerSlot);
 
             if (client == null)
                 return;
 
+            if (client.IsBot)
+                return;
+
             ClientSoundList.Remove(client);
-        }
-
-        public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
-        {
-            var client = @event.Userid;
-
-            if (client == null || client.IsBot || client.IsHLTV)
-                return HookResult.Continue;
-
-            if (client.AuthorizedSteamID == null)
-                return HookResult.Continue;
-
-            var steamid = client.AuthorizedSteamID!.SteamId3;
-            Task.Run(async () => await GetPlayerSoundMode(client, steamid));
-
-            return HookResult.Continue;
         }
 
         private async Task GetPlayerSoundMode(CCSPlayerController client, string steamid)
@@ -94,15 +92,15 @@ namespace StopSound
                 Auth = steamid
             };
 
-            var result = await Connection!.ExecuteReaderAsync(query, param);
+            if(Connection == null) return;
+
+            var result = await Connection.ExecuteReaderAsync(query, param);
 
             if (result == null) return;
 
-            if (result.HasRows)
-            {
-                result.Read();
+            if (await result.ReadAsync())
                 ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
-            }
+
             else
                 await InsertPlayerData(client, steamid);
         }
@@ -116,7 +114,9 @@ namespace StopSound
                 Mode = (long)mode
             };
 
-            await Connection!.ExecuteAsync(query, param);
+            if (Connection == null) return;
+
+            await Connection.ExecuteAsync(query, param);
         }
 
         [ConsoleCommand("css_stopsound")]
@@ -127,7 +127,7 @@ namespace StopSound
 
             if (int.Parse(arg) < 0 || int.Parse(arg) > 3)
             {
-                info.ReplyToCommand($"{ChatColors.Green}[Stopsound]{ChatColors.White} You can't set number more than 3 or less than 0!");
+                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} You can't set number more than 3 or less than 0!");
                 return;
             }
 
@@ -169,8 +169,10 @@ namespace StopSound
 
             if (database)
             {
-                var steamid = client.AuthorizedSteamID!.SteamId3;
-                Task.Run(async () => await InsertPlayerData(client, steamid, mode));
+                var steamid = client.AuthorizedSteamID?.SteamId3;
+
+                if(steamid != null) 
+                    Task.Run(async () => await InsertPlayerData(client, steamid, mode));
             }
 
             client.PrintToChat($" {ChatColors.Green}[Stopsound]{ChatColors.White} You set to {ChatColors.Olive}{GetModeString(mode)}{ChatColors.White}.");
