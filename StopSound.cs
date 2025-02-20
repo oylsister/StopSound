@@ -21,8 +21,7 @@ namespace StopSound
         public enum SoundMode : long
         {
             M_NORMAL = 0,
-            M_STOP = 1,
-            M_SILENCER = 2
+            M_STOP = 1
         }
 
         public Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
@@ -99,7 +98,14 @@ namespace StopSound
             if (result == null) return;
 
             if (await result.ReadAsync())
-                ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
+            {
+                var mode = result["sound_mode"];
+
+                if((long)mode == 2)
+                    mode = 0;
+
+                ClientSoundList[client] = (SoundMode)mode;
+            }
 
             else
                 await InsertPlayerData(client, steamid);
@@ -120,14 +126,27 @@ namespace StopSound
         }
 
         [ConsoleCommand("css_stopsound")]
-        [CommandHelper(1, "css_stopsound <0-2>", CommandUsage.CLIENT_ONLY)]
+        [CommandHelper(0, "css_stopsound <0-2>", CommandUsage.CLIENT_ONLY)]
         public void StopSoundCommand(CCSPlayerController client, CommandInfo info)
         {
+            if(info.ArgCount < 2)
+            {
+                // set to normal first;
+                SoundMode change = SoundMode.M_NORMAL;
+
+                // if player already have normal mode, then switch to stop.
+                if(ClientSoundList[client] == SoundMode.M_NORMAL)
+                    change = SoundMode.M_STOP;
+
+                SetStopSoundStatus(client, change, true);
+                return;
+            }
+
             var arg = info.GetArg(1);
 
-            if (int.Parse(arg) < 0 || int.Parse(arg) > 3)
+            if (int.Parse(arg) < 0 || int.Parse(arg) > 2)
             {
-                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} You can't set number more than 3 or less than 0!");
+                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} Usage: css_stopsound <0-1>");
                 return;
             }
 
@@ -137,24 +156,7 @@ namespace StopSound
 
         public HookResult Hook_WeaponFiring(UserMessage userMessage)
         {
-            var weaponid = userMessage.ReadUInt("weapon_id");
-            var soundType = userMessage.ReadInt("sound_type");
-            var itemdefindex = userMessage.ReadUInt("item_def_index");
-
-            userMessage.SetUInt("weapon_id", 0);
-            userMessage.SetInt("sound_type", 9);
-            userMessage.SetUInt("item_def_index", 61);
-
-            // send for people who use silencer.
-            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_SILENCER);
-            userMessage.Send();
-
-            userMessage.SetUInt("weapon_id", weaponid);
-            userMessage.SetInt("sound_type", soundType);
-            userMessage.SetUInt("item_def_index", itemdefindex);
-
             userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
-
             return HookResult.Continue;
         }
 
@@ -202,9 +204,6 @@ namespace StopSound
 
                 case SoundMode.M_STOP:
                     return "No weapon sound";
-
-                case SoundMode.M_SILENCER:
-                    return "Silencer sound";
 
                 default:
                     return "Invalid";
