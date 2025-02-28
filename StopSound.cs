@@ -1,8 +1,11 @@
-﻿using CounterStrikeSharp.API;
+﻿using System;
+using System.Runtime.InteropServices;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Entities;
+using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
 using Dapper;
@@ -16,7 +19,7 @@ namespace StopSound
         public override string ModuleName => "Stop Weapon Sound";
         public override string ModuleAuthor => "Oylsister";
         public override string ModuleDescription => "Prevent client to hear a noise sound from firing weapon";
-        public override string ModuleVersion => "1.3";
+        public override string ModuleVersion => "1.4";
 
         public enum SoundMode : long
         {
@@ -36,6 +39,16 @@ namespace StopSound
             RegisterListener<OnClientDisconnect>(OnClientDisconnect);
 
             LoadDatabase().Wait();
+        }
+
+        public override void Unload(bool hotReload)
+        {
+            UnhookUserMessage(452, Hook_WeaponFiring, HookMode.Pre);
+
+            RemoveListener<OnClientPutInServer>(OnClientPutInServer);
+            RemoveListener<OnClientDisconnect>(OnClientDisconnect);
+
+            Connection?.Close();
         }
 
         private async Task LoadDatabase()
@@ -60,7 +73,7 @@ namespace StopSound
 
             var steamid = client.AuthorizedSteamID?.SteamId3;
 
-            if(steamid == null)
+            if (steamid == null)
             {
                 return;
             }
@@ -92,7 +105,7 @@ namespace StopSound
                 Auth = steamid
             };
 
-            if(Connection == null) return;
+            if (Connection == null) return;
 
             var result = await Connection.ExecuteReaderAsync(query, param);
 
@@ -125,9 +138,9 @@ namespace StopSound
         {
             var arg = info.GetArg(1);
 
-            if (int.Parse(arg) < 0 || int.Parse(arg) > 3)
+            if (int.Parse(arg) < 0 || int.Parse(arg) > 2)
             {
-                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} You can't set number more than 3 or less than 0!");
+                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} Usage css_stopsound <0-1>");
                 return;
             }
 
@@ -137,32 +150,24 @@ namespace StopSound
 
         public HookResult Hook_WeaponFiring(UserMessage userMessage)
         {
-            var weaponid = userMessage.ReadUInt("weapon_id");
-            var soundType = userMessage.ReadInt("sound_type");
-            var itemdefindex = userMessage.ReadUInt("item_def_index");
+            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
 
+            /*
             userMessage.SetUInt("weapon_id", 0);
             userMessage.SetInt("sound_type", 9);
             userMessage.SetUInt("item_def_index", 61);
+            */
 
             // send for people who use silencer.
-            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_SILENCER);
-            userMessage.Send();
-
-            userMessage.SetUInt("weapon_id", weaponid);
-            userMessage.SetInt("sound_type", soundType);
-            userMessage.SetUInt("item_def_index", itemdefindex);
-
-            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
-
+            //userMessage.Recipients = GetRecipientFromMode(SoundMode.M_SILENCER);
             return HookResult.Continue;
         }
 
         void SetStopSoundStatus(CCSPlayerController client, SoundMode mode, bool database = false)
         {
-            if(client == null) return;
+            if (client == null) return;
 
-            if(!ClientSoundList.ContainsKey(client))
+            if (!ClientSoundList.ContainsKey(client))
                 ClientSoundList.Add(client, mode);
 
             ClientSoundList[client] = mode;
@@ -171,7 +176,7 @@ namespace StopSound
             {
                 var steamid = client.AuthorizedSteamID?.SteamId3;
 
-                if(steamid != null) 
+                if (steamid != null)
                     Task.Run(async () => await InsertPlayerData(client, steamid, mode));
             }
 
@@ -182,9 +187,9 @@ namespace StopSound
         {
             var recipientfilter = new RecipientFilter();
 
-            foreach(var client in ClientSoundList)
+            foreach (var client in ClientSoundList)
             {
-                if(client.Value == mode)
+                if (client.Value == mode)
                 {
                     recipientfilter.Add(client.Key);
                 }
