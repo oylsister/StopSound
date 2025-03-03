@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
@@ -10,6 +11,7 @@ using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using ZombieSharp.Models;
 using static CounterStrikeSharp.API.Core.Listeners;
 
 namespace StopSound
@@ -28,7 +30,8 @@ namespace StopSound
             M_SILENCER = 2
         }
 
-        public Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
+        public static MemoryFunctionWithReturn<nint, uint, nint, nint, nint, float, float, nint> CBaseEntity_EmitSoundWithFilter = new("55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 89 8D ? ? ? ? F3 0F 11");
+        public static Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
         public SqliteConnection? Connection = null;
 
         public override void Load(bool hotReload)
@@ -49,6 +52,48 @@ namespace StopSound
             RemoveListener<OnClientDisconnect>(OnClientDisconnect);
 
             Connection?.Close();
+        }
+
+        [GameEventHandler]
+        public HookResult OnWeaponFire(EventWeaponFire @event, GameEventInfo info)
+        {
+            var weapon = @event.Weapon;
+            var client = @event.Userid;
+
+            if (client == null)
+                return HookResult.Continue;
+
+            if(weapon == null)
+                return HookResult.Continue;
+
+            if(weapon.Contains("grenade") || weapon.Contains("knife"))
+                return HookResult.Continue;
+
+            EmitSoundSilencer(client);
+            return HookResult.Continue;
+        }
+
+        public static unsafe void EmitSoundSilencer(CCSPlayerController shooter)
+        {
+            if (shooter == null || !shooter.IsValid)
+                return;
+
+            using (CRecipientFilter filter = new())
+            {
+                foreach (var client in ClientSoundList)
+                {
+                    // if they using silencer and not the shooter
+                    if (client.Value == SoundMode.M_SILENCER && client.Key != shooter)
+                    {
+                        filter.AddPlayers(client.Key);
+                    }
+                }
+
+                fixed (byte* soundNamePtr = Encoding.UTF8.GetBytes("zr.usp.sound" + "\0"))
+                {
+                    CBaseEntity_EmitSoundWithFilter.Invoke(filter.Handle, shooter.Index, (nint)soundNamePtr, 0, 0, 0, 1.0f);
+                }
+            }
         }
 
         private async Task LoadDatabase()
@@ -138,9 +183,9 @@ namespace StopSound
         {
             var arg = info.GetArg(1);
 
-            if (int.Parse(arg) < 0 || int.Parse(arg) > 2)
+            if (int.Parse(arg) < 0 || int.Parse(arg) > 3)
             {
-                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} Usage css_stopsound <0-1>");
+                info.ReplyToCommand($" {ChatColors.Green}[Stopsound]{ChatColors.White} Usage css_stopsound <0-2>");
                 return;
             }
 
