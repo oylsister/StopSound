@@ -38,6 +38,7 @@ namespace StopSound
         {
             HookUserMessage(452, Hook_WeaponFiring, HookMode.Pre);
 
+            RegisterListener<OnMapStart>(OnMapStart);
             RegisterListener<OnClientPutInServer>(OnClientPutInServer);
             RegisterListener<OnClientDisconnect>(OnClientDisconnect);
 
@@ -102,6 +103,11 @@ namespace StopSound
             Connection.Open();
 
             await Connection.ExecuteAsync(@"CREATE TABLE IF NOT EXISTS stopsound (player_auth VARCHAR(64) PRIMARY KEY, sound_mode INT);");
+        }
+
+        private void OnMapStart(string map)
+        {
+            ClientSoundList?.Clear();
         }
 
         private void OnClientPutInServer(int playerSlot)
