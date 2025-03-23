@@ -11,7 +11,6 @@ using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
 using Dapper;
 using Microsoft.Data.Sqlite;
-using ZombieSharp.Models;
 using static CounterStrikeSharp.API.Core.Listeners;
 
 namespace StopSound
@@ -30,7 +29,6 @@ namespace StopSound
             M_SILENCER = 2
         }
 
-        public static MemoryFunctionWithReturn<nint, uint, nint, nint, nint, float, float, nint> CBaseEntity_EmitSoundWithFilter = new("55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 89 8D ? ? ? ? F3 0F 11");
         public static Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
         public SqliteConnection? Connection = null;
 
@@ -79,22 +77,18 @@ namespace StopSound
             if (shooter == null || !shooter.IsValid)
                 return;
 
-            using (CRecipientFilter filter = new())
-            {
-                foreach (var client in ClientSoundList)
-                {
-                    // if they using silencer and not the shooter
-                    if (client.Value == SoundMode.M_SILENCER && client.Key != shooter)
-                    {
-                        filter.AddPlayers(client.Key);
-                    }
-                }
+            var filter = new RecipientFilter();
 
-                fixed (byte* soundNamePtr = Encoding.UTF8.GetBytes("zr.usp.sound" + "\0"))
+            foreach (var client in ClientSoundList)
+            {
+                // if they using silencer and not the shooter
+                if (client.Value == SoundMode.M_SILENCER && client.Key != shooter)
                 {
-                    CBaseEntity_EmitSoundWithFilter.Invoke(filter.Handle, shooter.Index, (nint)soundNamePtr, 0, 0, 0, 1.0f);
+                    filter.Add(client.Key);
                 }
             }
+
+            shooter.EmitSound("zr.usp.sound", filter);
         }
 
         private async Task LoadDatabase()
