@@ -30,6 +30,8 @@ namespace StopSound
         }
 
         public static Dictionary<CCSPlayerController, SoundMode> ClientSoundList = new Dictionary<CCSPlayerController, SoundMode>();
+        public required RecipientFilter SilencerGroup;
+        public required RecipientFilter EnabledSoundGroup;
         public SqliteConnection? Connection = null;
 
         public override void Load(bool hotReload)
@@ -39,6 +41,9 @@ namespace StopSound
             RegisterListener<OnMapStart>(OnMapStart);
             RegisterListener<OnClientPutInServer>(OnClientPutInServer);
             RegisterListener<OnClientDisconnect>(OnClientDisconnect);
+
+            SilencerGroup = new();
+            EnabledSoundGroup = new();
 
             LoadDatabase().Wait();
         }
@@ -72,11 +77,12 @@ namespace StopSound
             return HookResult.Continue;
         }
 
-        public static unsafe void EmitSoundSilencer(CCSPlayerController shooter)
+        public void EmitSoundSilencer(CCSPlayerController shooter)
         {
             if (shooter == null || !shooter.IsValid)
                 return;
 
+            /*
             var filter = new RecipientFilter();
 
             foreach (var client in ClientSoundList)
@@ -87,8 +93,9 @@ namespace StopSound
                     filter.Add(client.Key);
                 }
             }
+            */
 
-            shooter.EmitSound("zr.usp.sound", filter);
+            shooter.EmitSound("zr.usp.sound", SilencerGroup);
         }
 
         private async Task LoadDatabase()
@@ -102,6 +109,8 @@ namespace StopSound
         private void OnMapStart(string map)
         {
             ClientSoundList?.Clear();
+            SilencerGroup.Clear();
+            EnabledSoundGroup.Clear();
         }
 
         private void OnClientPutInServer(int playerSlot)
@@ -115,6 +124,7 @@ namespace StopSound
                 return;
 
             ClientSoundList.Add(client, SoundMode.M_NORMAL);
+            EnabledSoundGroup.Add(client);
 
             var steamid = client.AuthorizedSteamID?.SteamId3;
 
@@ -123,7 +133,23 @@ namespace StopSound
                 return;
             }
 
-            Task.Run(async () => await GetPlayerSoundMode(client, steamid));
+            Task.Run(async () =>
+            {
+                var result = await GetPlayerSoundMode(client, steamid);
+
+                ClientSoundList[client] = result;
+
+                Server.NextFrame(() =>
+                {
+                    if (result != SoundMode.M_NORMAL)
+                    {
+                        EnabledSoundGroup.Remove(client);
+
+                        if (result == SoundMode.M_SILENCER)
+                            SilencerGroup.Add(client);
+                    }
+                });
+            });
         }
 
         private void OnClientDisconnect(int playerSlot)
@@ -137,11 +163,13 @@ namespace StopSound
                 return;
 
             ClientSoundList.Remove(client);
+            EnabledSoundGroup.Remove(client);
+            SilencerGroup.Remove(client);
         }
 
-        private async Task GetPlayerSoundMode(CCSPlayerController client, string steamid)
+        private async Task<SoundMode> GetPlayerSoundMode(CCSPlayerController client, string steamid)
         {
-            if (client == null) return;
+            if (client == null) return SoundMode.M_NORMAL;
 
             var query = "SELECT sound_mode FROM stopsound WHERE player_auth = @Auth;";
 
@@ -150,17 +178,23 @@ namespace StopSound
                 Auth = steamid
             };
 
-            if (Connection == null) return;
+            if (Connection == null) return SoundMode.M_NORMAL;
 
             var result = await Connection.ExecuteReaderAsync(query, param);
 
-            if (result == null) return;
+            if (result == null) return SoundMode.M_NORMAL;
 
             if (await result.ReadAsync())
-                ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
+            {
+                // ClientSoundList[client] = (SoundMode)(long)result["sound_mode"];
+                return (SoundMode)(long)result["sound_mode"];
+            }
 
             else
+            {
                 await InsertPlayerData(client, steamid);
+                return SoundMode.M_NORMAL;
+            }
         }
 
         private async Task InsertPlayerData(CCSPlayerController client, string steamid, SoundMode mode = SoundMode.M_NORMAL)
@@ -195,7 +229,8 @@ namespace StopSound
 
         public HookResult Hook_WeaponFiring(UserMessage userMessage)
         {
-            userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
+            // userMessage.Recipients = GetRecipientFromMode(SoundMode.M_NORMAL);
+            userMessage.Recipients = EnabledSoundGroup;
 
             /*
             userMessage.SetUInt("weapon_id", 0);
@@ -216,6 +251,17 @@ namespace StopSound
                 ClientSoundList.Add(client, mode);
 
             ClientSoundList[client] = mode;
+
+            if (mode == SoundMode.M_NORMAL)
+                EnabledSoundGroup.Add(client);
+
+            else
+            {
+                EnabledSoundGroup.Remove(client);
+
+                if (mode == SoundMode.M_SILENCER)
+                    SilencerGroup.Add(client);
+            }
 
             if (database)
             {
