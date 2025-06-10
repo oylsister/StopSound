@@ -251,6 +251,7 @@ namespace StopSound
                 ClientSoundList.Add(client, mode);
 
             ClientSoundList[client] = mode;
+            SilencerGroup.Remove(client);
 
             if (mode == SoundMode.M_NORMAL)
                 EnabledSoundGroup.Add(client);
