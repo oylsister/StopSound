@@ -95,7 +95,10 @@ namespace StopSound
             }
             */
 
-            shooter.EmitSound("zr.usp.sound", SilencerGroup);
+            var tempGroup = SilencerGroup;
+            tempGroup.Remove(shooter);
+
+            shooter.EmitSound("zr.usp.sound", tempGroup);
         }
 
         private async Task LoadDatabase()
